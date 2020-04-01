@@ -1,8 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_socket_io/flutter_socket_io.dart';
-import 'package:flutter_socket_io/socket_io_manager.dart';
+import 'package:real_chat_flutter/main.dart';
+import 'package:real_chat_flutter/socketService.dart';
 
 class ChatPage extends StatefulWidget {
   @override
@@ -10,55 +10,67 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
-  SocketIO socketIO;
-  List<String> messages;
+  List messages;
   double height, width;
   TextEditingController textController;
   ScrollController scrollController;
 
+  final SocketService socketService = injector.get<SocketService>();
+
   @override
   void initState() {
     //Initializing the message list
-    messages = List<String>();
+    messages = List();
+
     //Initializing the TextEditingController and ScrollController
     textController = TextEditingController();
     scrollController = ScrollController();
-    //Creating the socket
-    socketIO = SocketIOManager().createSocketIO(
-      'https://real-chat-1234.herokuapp.com',
-      '/',
-    );
-    //Call init before doing anything with socket
-    socketIO.init();
-    //Subscribe to an event to listen to
-    socketIO.subscribe('receive_message', (jsonData) {
+
+    socketService.createSocketConnection();
+
+    socketService.socket.on('output', (jsonData) {
       //Convert the JSON data received into a Map
-      Map<String, dynamic> data = json.decode(jsonData);
-      this.setState(() => messages.add(data['message']));
+
+      print(jsonData);
+
+      this.setState(() => messages.add({
+            'message': jsonData['data']['text'],
+            'data': jsonData['data']['data'],
+            'sender': 'bot'
+          }));
       scrollController.animateTo(
         scrollController.position.maxScrollExtent,
         duration: Duration(milliseconds: 600),
         curve: Curves.ease,
       );
     });
-    //Connect to the socket
-    socketIO.connect();
+
     super.initState();
   }
 
   Widget buildSingleMessage(int index) {
+    //print('Message: ${messages[index]}');
+
+    var sender = messages[index]['sender'];
+    var message = messages[index]['message'];
+
+    if (message == null) return Container();
+
     return Container(
-      alignment: Alignment.centerLeft,
+      alignment: sender == 'bot' ? Alignment.centerLeft : Alignment.centerRight,
       child: Container(
         padding: const EdgeInsets.all(20.0),
-        margin: const EdgeInsets.only(bottom: 20.0, left: 20.0),
+        margin: const EdgeInsets.only(bottom: 20.0, left: 20.0, right: 20.0),
         decoration: BoxDecoration(
-          color: Colors.deepPurple,
-          borderRadius: BorderRadius.circular(20.0),
+          color: sender == 'bot' ? Colors.grey[600] : Colors.grey[200],
+          border: null,
+          borderRadius: BorderRadius.circular(30.0),
         ),
         child: Text(
-          messages[index],
-          style: TextStyle(color: Colors.white, fontSize: 15.0),
+          message,
+          style: TextStyle(
+              color: sender == 'bot' ? Colors.white : Colors.grey[900],
+              fontSize: 15.0),
         ),
       ),
     );
@@ -98,11 +110,10 @@ class _ChatPageState extends State<ChatPage> {
       onPressed: () {
         //Check if the textfield has text or not
         if (textController.text.isNotEmpty) {
-          //Send the message as JSON data to send_message event
-          socketIO.sendMessage(
-              'send_message', json.encode({'message': textController.text}));
-          //Add the message to the list
-          this.setState(() => messages.add(textController.text));
+          socketService.sendMessage(textController.text);
+
+          this.setState(() => messages.add(
+              {'message': textController.text, 'data': {}, 'sender': 'user'}));
           textController.text = '';
           //Scrolldown the list to show the latest message
           scrollController.animateTo(
